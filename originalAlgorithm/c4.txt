@@ -1,0 +1,293 @@
+/***************************************************************************
+**                                                                        **
+**                          Connect-4 Algorithm                           **
+**                                                                        **
+**                              Version 3.7                               **
+**                                                                        **
+**                            By Keith Pomakis                            **
+**                          (pomakis at pobox.com)                        **
+**                                                                        **
+**                               May, 2000                                **
+**                                                                        **
+****************************************************************************
+**  $Id: c4.txt,v 3.7 2000/05/19 16:49:46 pomakis Exp pomakis $
+***************************************************************************/
+
+The files "c4.c" and "c4.h" provide the functions necessary to implement a
+front-end-independent Connect-4 game.  Multiple board sizes are supported.
+It is also possible to specify the number of pieces necessary to connect in
+a row in order to win.  Therefore one can play Connect-3, Connect-5, etc.
+An efficient tree-searching algorithm (making use of alpha-beta cutoff
+decisions) has been implemented to insure that the computer plays as
+quickly as possible.
+
+The file "game.c" is also being distributed, which illustrates how the
+Connect-4 functions can be used to construct an implementation of an actual
+game.  This file was quickly written just to get an actual implementation up
+and running; it is NOT the reason for this distribution.  The idea is for
+people to create their own front-ends for this algorithm.  The functions
+have been designed to be general enough to be used with any front-end one
+wishes to design.
+
+The documentation describing each function can be found in the source code
+itself, "c4.c".  I believe the comments in this file are clear and
+explanatory enough not to warrant an external documentation file.  The
+sample front-end, "game.c", contains no documentation (hey, I've got other
+work to do, you know!).
+
+
+History
+-------
+
+I developed this particular algorithm back in October 1992 for an
+Artificial Intelligence assignment.  At the time, I implemented it in LISP.
+One year later I decided to convert the algorithm to C code so that I could
+use it as the smarts of a graphical front-end to the game.  In performing
+the conversion, I took care to make the code as generic as possible.
+
+Version 1.0 (Fall, 1993)
+    initial C implementation
+
+Version 2.0 (March, 1995)
+    was released when John Tromp (tromp@daisy.uwaterloo.ca) pointed out
+    to me that I was only implementing "shallow" alpha-beta cutoffs and
+    showed me how to implement "deep" cutoffs.  Thanks, John!
+
+Version 2.1 (October, 1995)
+    fixed a bug in the is_winner() function that occurred when the value
+    of player was something other than 0 or 1.
+
+Version 3.0 (November, 1995)
+    was a complete overhaul.  Most of the guts remained the same, and it
+    was just as efficient, but the interface functions changed.
+
+Version 3.1 (May, 1996)
+    fine-tuned some of the innards, making the average computer move take
+    1/3 of the time it used to.  Minor changes were made to the functional
+    interface.
+
+Version 3.2 (June, 1996)
+    fine-tuned the innards a bit more, making it a bit more efficient.
+
+Version 3.3 (November, 1996)
+    fine-tuned the innards a bit more.  Also, the poll interval is now
+    specified in terms of CPU time rather than tree depth.  Thanks to
+    Miles Michelson (milesmi@uclink4.berkeley.edu) for making this
+    suggestion.
+
+Version 3.4 (April, 1997)
+    modified the order in which the game tree is searched, making the
+    average computer move take 1/5 of the time it used to.  Thanks to
+    William Krick (krick@elvis.rowan.edu) for suggesting this.  Also fixed
+    a bug that could be triggered when a board width or height smaller
+    than the number of pieces required in a row to win is specified.
+
+Version 3.5 (April, 1998)
+    fine-tuned the innards a wee bit more, making it a bit more efficient.
+    Thanks to Stefan Bellon (bellonsn@trick.informatik.uni-stuttgart.de)
+    for pointing out the appropriate change.
+
+Version 3.6 (April, 1999)
+    hard-coded the first move of a standard 7x6 game of Connect-4 to be
+    the middle column (proven by Victor Allis in his Master's thesis
+    ("ftp://ftp.cs.vu.nl/pub/victor/connect4.ps") to be the best first
+    move).
+
+Version 3.7 (May, 2000)
+    rearranged one of the internal data structures, making the average
+    computer move take about 80% of the time it used to.  Also added the
+    c4_get_version() function.
+
+
+Legal Stuff, etc.
+-----------------
+
+I am releasing these functions to the public domain.  Therefore, people can
+use them, copy them, distribute them, modify them, and do whatever they
+want with them.
+
+If you find any bugs (gasp!) or have any questions or comments about the
+functions or about the algorithm itself, you can contact me via e-mail.  My
+address is "pomakis at pobox.com".  I'd be interested in hearing what you think!
+
+Oh, one other thing... I've put a lot of work into these functions, so I'd
+appreciate it if you kept my name attached to them when distributing or
+modifying them.  If you actually use these functions for anything, give me
+credit somewhere!
+
+
+The Algorithm  (not exactly as implemented, but algorithmically equivalent)
+-------------
+
+All array indexes are zero-based.
+
+Global variables:
+
+              x = the board width.
+
+              y = the board height.
+
+              n = the number to connect.
+
+       level[2] = the skill level of the computer players, where applicable.
+
+    board[x][y] = the board, where board[i][j] contains the value:
+                        0 if player 0 occupies position i,j
+                        1 if player 1 occupies position i,j
+                        C4_NONE if neither player occupies position i,j.
+
+              z = the number of possible n-in-a-row areas on the board
+                  in which a winning connection can be made.  This equals:
+                        4*x*y - 3*x*n - 3*y*n + 3*x + 3*y - 4*n + 2*n*n + 2.
+
+                  Each n-in-a-row area on the board in which a winning
+                  connection can be made is given a unique number from 0 to
+                  z-1.  Each space on the board is told which n-in-a-row
+                  areas it is part of.  This is done with the array...
+                  
+      map[x][y] = an array in which each element is a list specifying, for
+                  each corresponding board space, which n-in-a-row areas
+                  it is part of.
+
+    stats[2][z] = an array containing statistics of each player.  Statistics
+                  for player 0 are contained in stats[0], while statistics
+                  for player 1 are contained in stats[1].  stats[a][b] will
+                  contain 0 if the n-in-a-row area b is no longer a
+                  winning possibility for player a.  Otherwise it will
+                  contain 2^p, where p is the number of pieces player a has
+                  in this area.
+
+-----------------------------------------------------------------------------
+
+Upper-level Algorithm:
+
+    set up map[][] array
+    set every element in board[][] to C4_NONE
+    set every element in stats[][] to 1
+    set player to either 0 or 1
+
+    while game is not over
+        col = get_desired_col(player)
+        drop_piece(player, col)
+
+        if is_winner(player) or is_tie()
+            game is over
+        endif
+
+        player = 1 - player
+    endwhile
+
+-----------------------------------------------------------------------------
+
+get_desired_col(player):
+    if player is human
+        return number from user interface
+    else
+        return best_move(player, level[player])
+    endif
+
+-----------------------------------------------------------------------------
+
+best_move(player, depth):  /* recursive! */
+    minimax search of possible future board states, using alpha-beta
+    cutoff techniques to limit unnecessary searches.  Look up these
+    techniques in any AI book.  The "goodness" of a board state at any
+    point in time, from the point of view of the current player, is equal to
+    score(player) - score(1-player), where score(p) = sum of stats[p].
+
+-----------------------------------------------------------------------------
+
+drop_piece(player, col):
+    row = row the token will end up in after falling down the column
+    board[col][row] = player
+    for each element q in map[col][row]
+        stats[player][q] = stats[player][q] * 2
+        stats[1-player][q] = 0
+    endfor
+
+-----------------------------------------------------------------------------
+
+is_winner(player):
+    for each element s in stats[player]
+        if s = 2^n then return TRUE
+    endfor
+    return FALSE
+
+-----------------------------------------------------------------------------
+
+is_tie():
+    if no element of board[][] is C4_NONE
+        return TRUE
+    else
+        return FALSE
+    endif
+
+-----------------------------------------------------------------------------
+
+sample map[x][y] for x = 7, y = 6, and n = 4:
+
+    +---------+---------+---------+---------+---------+---------+---------+
+    |20,26,59 |20,21,29,|20,21,22,|20,21,22,|21,22,23,|22,23,41,|23,44,56 |
+    |         |62       |32,65    |23,35,47,|38,50    |53       |         |
+  5 |         |         |         |68       |         |         |         |
+    |         |         |         |         |         |         |         |
+    |         |         |         |         |         |         |         |
+    +---------+---------+---------+---------+---------+---------+---------+
+    |16,25,26,|16,17,28,|16,17,18,|16,17,18,|17,18,19,|18,19,40,|19,43,44,|
+    |58       |29,59,61 |31,32,47,|19,34,35,|37,38,49,|41,52,56 |55       |
+  4 |         |         |62,64    |46,50,65,|53,68    |         |         |
+    |         |         |         |67       |         |         |         |
+    |         |         |         |         |         |         |         |
+    +---------+---------+---------+---------+---------+---------+---------+
+    |12,24,25,|12,13,27,|12,13,14,|12,13,14,|13,14,15,|14,15,39,|15,42,43,|
+    |26,57    |28,29,47,|30,31,32,|15,33,34,|36,37,38,|40,41,51,|44,54    |
+  3 |         |58,60    |46,50,59,|35,45,49,|48,52,56,|55,68    |         |
+    |         |         |61,63    |53,62,64,|65,67    |         |         |
+    |         |         |         |66       |         |         |         |
+    +---------+---------+---------+---------+---------+---------+---------+
+    |8,24,25, |8,9,27,  |8,9,10,  |8,9,10,  |9,10,11, |10,11,39,|11,42,43,|
+    |26,47    |28,29,46,|30,31,32,|11,33,34,|36,37,38,|40,41,54,|44,68    |
+  2 |         |50,57    |45,49,53,|35,48,52,|51,55,62,|65,67    |         |
+    |         |         |58,60    |56,59,61,|64,66    |         |         |
+    |         |         |         |63       |         |         |         |
+    +---------+---------+---------+---------+---------+---------+---------+
+    |4,24,25, |4,5,27,  |4,5,6,30,|4,5,6,7, |5,6,7,36,|6,7,39,  |7,42,43, |
+    |46       |28,45,49 |31,48,52,|33,34,51,|37,54,61,|40,64,66 |67       |
+  1 |         |         |57       |55,58,60 |63       |         |         |
+    |         |         |         |         |         |         |         |
+    |         |         |         |         |         |         |         |
+    +---------+---------+---------+---------+---------+---------+---------+
+    |0,24,45  |0,1,27,  |0,1,2,30,|0,1,2,3, |1,2,3,36,|2,3,39,63|3,42,66  |
+    |         |48       |51       |33,54,57 |60       |         |         |
+  0 |         |         |         |         |         |         |         |
+    |         |         |         |         |         |         |         |
+    |         |         |         |         |         |         |         |
+    +---------+---------+---------+---------+---------+---------+---------+
+
+         0         1         2         3         4         5         6
+
+ 0 - 23: horizontal wins
+24 - 44: vertical wins
+45 - 56: forward diagonal wins
+57 - 68: backward diagonal wins
+
+-----------------------------------------------------------------------------
+
+The sample map that I show above is just to show what the map[x][y]
+array should look like for a 7x6 board of Connect-4 (even though it's
+usually filled in dynamically using a few iterative loops).  The numbers
+in this array are labels on the winnable n-in-a-row areas of the board.
+This is useful so that when a piece is dropped into an arbitrary board
+position, the algorithm can determine very quickly which n-in-a-row
+areas have become more likely destined for a win for the player, and, as
+importantly, which n-in-a-row areas are no longer possibilities for the
+opposing player.  The numbers in the map[x][y] array are indexes into a
+pair of parallel single-dimensional arrays which keep track of how likely
+each n-in-a-row area is to be the winning area for each player.  I call
+this the stats array.  The "score" of a player is merely the sum of the
+stats array of the player.  Subtracting one score from another determines
+how well a player is doing relative to the opposing player.  You throw
+these numbers into your general run-of-the-mill minimax algorithm, throw
+in some alpha-beta cutoff logic for efficiency, and that, in a nutshell,
+is the secret to my algorithm.
+
